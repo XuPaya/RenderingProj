@@ -1,0 +1,2 @@
+All functions needed for the particle updates are in the timestep.js, and the main() function shows a way of calling these functions. After each timestep, the positions of the particles are stored in the positions[] array, and you may change the way of particle initialization by changing num_particles_x/y/z and the init_particles() function.
+Please notify me if any bug exists.
