@@ -1,2 +1,58 @@
-<script  language="JavaScript" src="timestep.js">
-</script>
+<body>
+    <script src="three.js"></script>
+    <script language="JavaScript" src="timestep.js">
+    </script>
+    <script id="fragment-shader" type="x-shader/x-fragment">
+        precision mediump float;
+
+        void
+        main()
+        {
+           gl_FragColor = vec4( 1.0, 0.0, 0.0, 1.0 );
+        }
+
+    </script>
+    <script>
+        var scene = new THREE.Scene();
+        var camera = new THREE.OrthographicCamera(-10, 10, -10, 10, -10, 10);
+        camera.lookAt(0.1, 0.05, 0.1)
+
+        createVariables()
+        init_particles()
+        var renderer = new THREE.WebGLRenderer();
+        renderer.setSize(512, 512);
+        renderer.setClearColor(0xffffff, 1);
+        document.body.appendChild(renderer.domElement);
+
+        var material3 = new THREE.ShaderMaterial({
+            fragmentShader: document.getElementById('fragment-shader').textContent
+        });
+        var particles = new Array(num_particles)
+        for(var i = 0; i < num_particles; i++) {
+            var sphereGeo = new THREE.SphereGeometry( particle_radius_in_world / 10, 8, 8 );
+            var sphere = new THREE.Mesh( sphereGeo, material3 );
+            sphere.position.set(positions[i][0] / 10 - 5, (100 - positions[i][1]) / 10 - 5, positions[i][2] / 10 - 5)
+            particles[i] = sphere
+            scene.add(sphere);
+        }
+
+        var render = function () {
+            requestAnimationFrame(render);
+            renderer.render(scene, camera);
+        };
+        function UpdatePositions() {
+            for(var i = 0; i < num_particles; i++) {
+                particles[i].position.set(positions[i][0] / 10 - 5, (100 - positions[i][1]) / 10 - 5, positions[i][2] / 10 - 5);
+            }
+        }
+        function animate() {
+            requestAnimationFrame(animate)
+            run_pbf()
+            UpdatePositions()
+            render()
+        }
+
+        render()
+        animate()
+    </script>
+</body>

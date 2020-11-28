@@ -1,5 +1,5 @@
 // Macklin, M. and Müller, M., 2013. Position based fluids. ACM Transactions on Graphics (TOG), 32(4), p.104.
-
+const geometry = new THREE.BufferGeometry();
 pi = 3.141592653589793
 boundary = [100, 100, 100] // (x, y, z), y pointing up
 cell_size = 2.51
@@ -27,7 +27,7 @@ num_particles_z = 10
 num_particles = num_particles_x * num_particles_y * num_particles_y
 max_num_particles_per_cell = 100
 max_num_neighbors = 100
-time_delta = 1.0 / 100.0
+time_delta = 1.0 / 10.0
 epsilon = 1e-5
 particle_radius_in_world = 0.3
 
@@ -360,7 +360,7 @@ function run_pbf() {
 function init_particles() {
     for (var i = 0; i < num_particles; i++) {
         delta = h * 0.8
-        offs = [(boundary[0] - delta * num_particles_x) * 0.5, boundary[1] * 0.5, boundary[2] * 0.5]
+        offs = [(boundary[0] - delta * num_particles_x) * 0.5, boundary[1] * 0.1, boundary[2] * 0.5]
         var x = Math.floor(i / num_particles_y) % num_particles_x;
         var y = (i % num_particles_y);
         var z = Math.floor(Math.floor(i / num_particles_x) / num_particles_y)
@@ -415,4 +415,3 @@ function main() {
     }
 }
 
-main()
