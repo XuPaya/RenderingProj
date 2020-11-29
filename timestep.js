@@ -1,7 +1,7 @@
 // Macklin, M. and Müller, M., 2013. Position based fluids. ACM Transactions on Graphics (TOG), 32(4), p.104.
 const gpu = new GPU();
 const pi = 3.141592653589793
-const boundary = [50, 50, 50] // (x, y, z), y pointing up
+const boundary = [15, 15, 15] // (x, y, z), y pointing up
 const cell_size = 2.51
 const cell_recpr = 1.0 / cell_size
 
@@ -21,15 +21,16 @@ grid_size = [round_up(boundary[0], 1), round_up(boundary[1], 1), round_up(bounda
 console.log(grid_size)
 
 const dim = 3
-const num_particles_x = 20
-const num_particles_y = 20
-const num_particles_z = 20
+const num_particles_x = 10
+const num_particles_y = 10
+const num_particles_z = 10
 const num_particles = num_particles_x * num_particles_y * num_particles_z
 const max_num_particles_per_cell = 100
 const max_num_neighbors = 100
 const time_delta = 1.0 / 20.0
 const epsilon = 1e-5
 const particle_radius_in_world = 0.3
+const XSPH_c = 0.01
 
 // PBF params
 const h = 1.1
@@ -52,8 +53,6 @@ var velocities
 var lambdas
 var position_deltas
 // 0: x-pos, 1: timestep in sin()
-var board_states
-
 
 var grid_num_particles
 var grid2particles
@@ -82,8 +81,6 @@ function createVariables() {
         velocities.push([[], [], []])
         position_deltas.push([[], [], []])
     }
-
-    board_states = [[], [], []];
 
     grid_num_particles = [] // x
     for (var i = 0; i < grid_size[0]; i++) {
@@ -193,7 +190,7 @@ const kernelUpdate = gpu.createKernel(
     function (positions, velocities) {
         function confine_position_to_boundary(p) {
             var bmin = this.constants.particle_radius_in_world
-            var bmax = 50 - this.constants.particle_radius_in_world
+            var bmax = 15 - this.constants.particle_radius_in_world
             //
             var ret = [0, 0, 0]
             for (var i = 0; i < 3; i++) {
@@ -343,7 +340,6 @@ const kernelComputePosDelta = gpu.createKernel(
             // pow(x, 4)
             return (-this.constants.corrK) * Math.pow(x, 4)
         }
-        var pos_i = positions[this.thread.x]
         var lambda_i = lambdas[this.thread.x]
 
         var pos_delta_i = [0.0, 0.0, 0.0]
@@ -470,7 +466,6 @@ function init_particles() {
         for (var c = 0; c < dim; c++)
             velocities[i][c] = 0
     }
-    //board_states[None] = ti.Vector([boundary[0] - epsilon, -0.0])
 }
 
 
