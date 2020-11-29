@@ -228,34 +228,9 @@ function prologue() {
     // apply gravity within boundary
 
     positions = kernelUpdate(positions, velocities)
-    // g = [0, -9.8, 0]
-    // for (var p_i = 0; p_i < num_particles; p_i++) {
-    //     pos = new Array(3)
-    //     pos[0] = positions[p_i][0]
-    //     pos[1] = positions[p_i][1]
-    //     pos[2] = positions[p_i][2]
-    //     vel = new Array(3)
-    //     vel[0] = velocities[p_i][0]
-    //     vel[1] = velocities[p_i][1]
-    //     vel[2] = velocities[p_i][2]
-    //     for (var j = 0; j < dim; j++) {
-    //         vel[j] += g[j] * time_delta
-    //         pos[j] += vel[j] * time_delta
-    //     }
-    //     cptb = confine_position_to_boundary(pos)
-    //     positions[p_i][0] = cptb[0]
-    //     positions[p_i][1] = cptb[1]
-    //     positions[p_i][2] = cptb[2]
-    // }
-
     // clear neighbor lookup table
 
     grid_num_particles = kernelGrid()
-    // for (var i = 0; i < grid_size[0]; i++)
-    //     for (var j = 0; j < grid_size[1]; j++)
-    //         for (var k = 0; k < grid_size[2]; k++)
-    //             grid_num_particles[i][j][k] = 0 // z;
-
     // const kernelPart = gpu.createKernel(
     //     function() {
     //         return -1
@@ -314,7 +289,7 @@ const settings0 = {
         corr_deltaQ_coeff: 0.3,
         corrK: 0.001,
     },
-};
+}
 
 const kernelApplyDelta = gpu.createKernel(
     function (positions, position_deltas) {
@@ -336,8 +311,8 @@ const settings1 = {
         corr_deltaQ_coeff: 0.3,
         corrK: 0.001,
     },
-};
-0
+}
+
 const kernelComputePosDelta = gpu.createKernel(
     function (positions, lambdas, particle_num_neighbors, particle_neighbors) {
         function poly6_value(s) {
@@ -437,79 +412,10 @@ const kernelComputeLambda = gpu.createKernel(
 
 function substep() {
     lambdas = kernelComputeLambda(positions, particle_neighbors, particle_num_neighbors);
-    // var sum_gradient_sqr = []
-    // var density_constraint = []
-    // var grad_i = []
-    // for (var p_i = 0; p_i < num_particles; p_i++) {
-    //     pos_i = positions[p_i]
-    //     grad_i.push([])
-    //     grad_i[p_i].push(0)
-    //     grad_i[p_i].push(0)
-    //     grad_i[p_i].push(0)
-    //     sum_gradient_sqr.push(0)
-    //     density_constraint.push(0)
-    //     for (var j = 0; j < particle_num_neighbors[p_i]; j++) {
-    //         p_j = particle_neighbors[p_i][j]
-    //         pos_ji = [pos_i[0] - positions[p_j][0], pos_i[1] - positions[p_j][1], pos_i[2] - positions[p_j][2]]
-    //         grad_j = spiky_gradient(pos_ji, h)
-    //         grad_i[p_i][0] += grad_j[0]
-    //         grad_i[p_i][1] += grad_j[1]
-    //         grad_i[p_i][2] += grad_j[2]
-    //         sum_gradient_sqr[p_i] += Math.pow(grad_j.norm(), 2)
-    //         // Eq(2)
-    //         density_constraint[p_i] += poly6_value(pos_ji.norm(), h)
-    //     }
-
-    //     // Eq(1)
-    //     // density_constraint[p_i] = (mass * density_constraint[p_i] / rho0) - 1.0
-
-    //     // sum_gradient_sqr += Math.pow(grad_i.norm(), 2)
-    //     // lambdas[p_i] = (-density_constraint) / (sum_gradient_sqr +
-    //     //     lambda_epsilon)
-    // }
-
-    // lambdas = KernelLambda(sum_gradient_sqr, density_constraint, grad_i);
     // compute position deltas
-    // Eq(12), (14)
-
     position_deltas = kernelComputePosDelta(positions, lambdas, particle_num_neighbors, particle_neighbors)
-
-
-    // for (var p_i = 0; p_i < num_particles; p_i++) {
-    //     pos_i = positions[p_i]
-    //     lambda_i = lambdas[p_i]
-
-    //     pos_delta_i = [0.0, 0.0, 0.0]
-    //     for (var j = 0; j < particle_num_neighbors[p_i]; j++) {
-    //         p_j = particle_neighbors[p_i][j]
-    //         if (p_j < 0)
-    //             break;
-    //         lambda_j = lambdas[p_j]
-    //         pos_ji = [0, 0, 0]
-    //         pos_ji[0] = pos_i[0] - positions[p_j][0]
-    //         pos_ji[1] = pos_i[1] - positions[p_j][1]
-    //         pos_ji[2] = pos_i[2] - positions[p_j][2]
-    //         scorr_ij = compute_scorr(pos_ji)
-    //         grad = spiky_gradient(pos_ji, h);
-    //         pos_delta_i[0] += (lambda_i + lambda_j + scorr_ij) * grad[0]
-    //         pos_delta_i[1] += (lambda_i + lambda_j + scorr_ij) * grad[1]
-    //         pos_delta_i[2] += (lambda_i + lambda_j + scorr_ij) * grad[2]
-    //     }
-
-    //     pos_delta_i[0] /= rho0
-    //     pos_delta_i[1] /= rho0
-    //     pos_delta_i[2] /= rho0
-    //     position_deltas[p_i][0] = pos_delta_i[0]
-    //     position_deltas[p_i][1] = pos_delta_i[1]
-    //     position_deltas[p_i][2] = pos_delta_i[2]
-    // }
     // apply position deltas
     positions = kernelApplyDelta(positions, position_deltas.toArray())
-    // for (var i = 0; i < num_particles; i++) {
-    //     positions[i][0] += position_deltas[i][0]
-    //     positions[i][1] += position_deltas[i][1]
-    //     positions[i][2] += position_deltas[i][2]
-    // }
 }
 
 function epilogue() {
