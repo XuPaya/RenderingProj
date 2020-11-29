@@ -1,9 +1,9 @@
 // Macklin, M. and Müller, M., 2013. Position based fluids. ACM Transactions on Graphics (TOG), 32(4), p.104.
-const geometry = new THREE.BufferGeometry();
-pi = 3.141592653589793
-boundary = [100, 100, 100] // (x, y, z), y pointing up
-cell_size = 2.51
-cell_recpr = 1.0 / cell_size
+const gpu = new GPU();
+const pi = 3.141592653589793
+const boundary = [50, 50, 50] // (x, y, z), y pointing up
+const cell_size = 2.51
+const cell_recpr = 1.0 / cell_size
 
 Array.prototype.norm = function () {
     var s = 0;
@@ -20,31 +20,31 @@ function round_up(f, s) {
 grid_size = [round_up(boundary[0], 1), round_up(boundary[1], 1), round_up(boundary[2], 1)]
 console.log(grid_size)
 
-dim = 3
-num_particles_x = 10
-num_particles_y = 10
-num_particles_z = 10
-num_particles = num_particles_x * num_particles_y * num_particles_y
-max_num_particles_per_cell = 100
-max_num_neighbors = 100
-time_delta = 1.0 / 10.0
-epsilon = 1e-5
-particle_radius_in_world = 0.3
+const dim = 3
+const num_particles_x = 20
+const num_particles_y = 20
+const num_particles_z = 20
+const num_particles = num_particles_x * num_particles_y * num_particles_z
+const max_num_particles_per_cell = 100
+const max_num_neighbors = 100
+const time_delta = 1.0 / 20.0
+const epsilon = 1e-5
+const particle_radius_in_world = 0.3
 
 // PBF params
-h = 1.1
-mass = 1.0
-rho0 = 1.0
-lambda_epsilon = 100.0
-pbf_num_iters = 5
-corr_deltaQ_coeff = 0.3
-corrK = 0.001
+const h = 1.1
+const mass = 1.0
+const rho0 = 1.0
+const lambda_epsilon = 100.0
+const pbf_num_iters = 5
+const corr_deltaQ_coeff = 0.3
+const corrK = 0.001
 // Need ti.pow()
 // corrN = 4.0
-neighbor_radius = h * 1.05
+const neighbor_radius = h * 1.05
 
-poly6_factor = 315.0 / 64.0 / pi
-spiky_grad_factor = -45.0 / pi
+const poly6_factor = 315.0 / 64.0 / pi
+const spiky_grad_factor = -45.0 / pi
 
 var old_positions
 var positions
@@ -70,43 +70,54 @@ function norm(a, b, dim) {
 }
 
 function createVariables() {
-    positions = new Array(num_particles)
-    old_positions = new Array(num_particles)
-    velocities = new Array(num_particles)
-    position_deltas = new Array(num_particles)
+    positions = []
+    old_positions = []
+    velocities = []
+    position_deltas = []
+    lambdas = []
     for (var i = 0; i < num_particles; i++) {
-        positions[i] = new Array(dim);
-        old_positions[i] = new Array(dim);
-        velocities[i] = new Array(dim);
-        position_deltas[i] = new Array(dim);
+        lambdas.push([]);
+        positions.push([[], [], []])
+        old_positions.push([[], [], []])
+        velocities.push([[], [], []])
+        position_deltas.push([[], [], []])
     }
 
-    lambdas = new Array(num_particles)
-    board_states = new Array(dim);
+    board_states = [[], [], []];
 
-    grid_num_particles = new Array(grid_size[0]) // x
+    grid_num_particles = [] // x
     for (var i = 0; i < grid_size[0]; i++) {
-        grid_num_particles[i] = new Array(grid_size[1]) // y
+        grid_num_particles.push([])
         for (var j = 0; j < grid_size[1]; j++) {
-            grid_num_particles[i][j] = new Array(grid_size[2]) // z;
-        }
-    }
-
-    grid2particles = new Array(grid_size[0]) // x
-    for (var i = 0; i < grid_size[0]; i++) {
-        grid2particles[i] = new Array(grid_size[1]) // y
-        for (var j = 0; j < grid_size[1]; j++) {
-            grid2particles[i][j] = new Array(grid_size[2]) // z;
+            grid_num_particles[i].push([])
             for (var k = 0; k < grid_size[2]; k++) {
-                grid2particles[i][j][k] = new Array(max_num_particles_per_cell) // hash
+                grid_num_particles[i][j].push([]);
             }
         }
     }
 
-    particle_num_neighbors = new Array(num_particles)
-    particle_neighbors = new Array(num_particles)
+    grid2particles = [] // x
+    for (var i = 0; i < grid_size[0]; i++) {
+        grid2particles.push([]) // y
+        for (var j = 0; j < grid_size[1]; j++) {
+            grid2particles[i].push([]) // z;
+            for (var k = 0; k < grid_size[2]; k++) {
+                grid2particles[i][j].push([]) // hash
+                for (var l = 0; l < max_num_particles_per_cell; l++) {
+                    grid2particles[i][j][k].push([])
+                }
+            }
+        }
+    }
+
+    particle_num_neighbors = []
+    particle_neighbors = []
     for (var i = 0; i < num_particles; i++) {
-        particle_neighbors[i] = new Array(max_num_neighbors);
+        particle_num_neighbors.push([]);
+        particle_neighbors.push([]);
+        for (var j = 0; j < max_num_neighbors; j++) {
+            particle_neighbors[i].push(-1)
+        }
     }
 
 }
@@ -158,9 +169,8 @@ function confine_position_to_boundary(p) {
     bmin = particle_radius_in_world
     bmax = boundary[0] - particle_radius_in_world
     //
-    ret = new Array(3)
+    ret = [0, 0, 0]
     for (var i = 0; i < dim; i++) {
-        // Use randomness to prevent particles from sticking into each other after clamping
         if (p[i] <= bmin)
             ret[i] = bmin
         else if (p[i] >= bmax)
@@ -171,18 +181,43 @@ function confine_position_to_boundary(p) {
     return ret
 }
 
-function move_board() {
-    // probably more accurate to exert force on particles according to hooke's law.
-    b = board_states[None]
-    b[1] += 1.0
-    period = 90
-    vel_strength = 8.0
-    if (b[1] >= 2 * period)
-        b[1] = 0
-    b[0] += -ti.sin(b[1] * np.pi / period) * vel_strength * time_delta
-    board_states[None] = b
-}
+const settings = {
+    output: { x: num_particles },
+    constants: {
+        time_delta: time_delta,
+        particle_radius_in_world: particle_radius_in_world,
 
+    },
+};
+const kernelUpdate = gpu.createKernel(
+    function (positions, velocities) {
+        function confine_position_to_boundary(p) {
+            var bmin = this.constants.particle_radius_in_world
+            var bmax = 50 - this.constants.particle_radius_in_world
+            //
+            var ret = [0, 0, 0]
+            for (var i = 0; i < 3; i++) {
+                if (p[i] <= bmin)
+                    ret[i] = bmin
+                else if (p[i] >= bmax)
+                    ret[i] = bmax
+                else
+                    ret[i] = p[i]
+            }
+            return ret
+        }
+        var pos = [0, 0, 0]
+        pos[0] = positions[this.thread.x][0] + this.constants.time_delta * velocities[this.thread.x][0]
+        pos[1] = positions[this.thread.x][1] + this.constants.time_delta * (velocities[this.thread.x][1] - this.constants.time_delta * 9.8)
+        pos[2] = positions[this.thread.x][2] + this.constants.time_delta * velocities[this.thread.x][2]
+        pos = confine_position_to_boundary(pos);
+        return pos
+    }, settings)
+
+const kernelGrid = gpu.createKernel(
+    function () {
+        return 0
+    }).setOutput(grid_size)
 function prologue() {
     // save old positions
     for (var p_i = 0; p_i < num_particles; p_i++) {
@@ -191,55 +226,56 @@ function prologue() {
         }
     }
     // apply gravity within boundary
-    g = [0, -9.8, 0]
-    for (var p_i = 0; p_i < num_particles; p_i++) {
-        pos = new Array(3)
-        pos[0] = positions[p_i][0]
-        pos[1] = positions[p_i][1]
-        pos[2] = positions[p_i][2]
-        vel = new Array(3)
-        vel[0] = velocities[p_i][0]
-        vel[1] = velocities[p_i][1]
-        vel[2] = velocities[p_i][2]
-        for (var j = 0; j < dim; j++) {
-            vel[j] += g[j] * time_delta
-            pos[j] += vel[j] * time_delta
-        }
-        cptb = confine_position_to_boundary(pos)
-        positions[p_i][0] = cptb[0]
-        positions[p_i][1] = cptb[1]
-        positions[p_i][2] = cptb[2]
-    }
+
+    positions = kernelUpdate(positions, velocities)
+    // g = [0, -9.8, 0]
+    // for (var p_i = 0; p_i < num_particles; p_i++) {
+    //     pos = new Array(3)
+    //     pos[0] = positions[p_i][0]
+    //     pos[1] = positions[p_i][1]
+    //     pos[2] = positions[p_i][2]
+    //     vel = new Array(3)
+    //     vel[0] = velocities[p_i][0]
+    //     vel[1] = velocities[p_i][1]
+    //     vel[2] = velocities[p_i][2]
+    //     for (var j = 0; j < dim; j++) {
+    //         vel[j] += g[j] * time_delta
+    //         pos[j] += vel[j] * time_delta
+    //     }
+    //     cptb = confine_position_to_boundary(pos)
+    //     positions[p_i][0] = cptb[0]
+    //     positions[p_i][1] = cptb[1]
+    //     positions[p_i][2] = cptb[2]
+    // }
 
     // clear neighbor lookup table
-    for (var i = 0; i < grid_size[0]; i++)
-        for (var j = 0; j < grid_size[1]; j++)
-            for (var k = 0; k < grid_size[2]; k++)
-                grid_num_particles[i][j][k] = 0 // z;
 
+    grid_num_particles = kernelGrid()
+    // for (var i = 0; i < grid_size[0]; i++)
+    //     for (var j = 0; j < grid_size[1]; j++)
+    //         for (var k = 0; k < grid_size[2]; k++)
+    //             grid_num_particles[i][j][k] = 0 // z;
+
+    // const kernelPart = gpu.createKernel(
+    //     function() {
+    //         return -1
+    //     }).setOutput([num_particles, max_num_neighbors])
+    //particle_neighbors = kernelPart();
     for (var p_i = 0; p_i < num_particles; p_i++)
-        for (var j = 0; j < num_particles; j++)
+        for (var j = 0; j < max_num_neighbors; j++)
             particle_neighbors[p_i][j] = -1;
 
     // update grid
     for (var p_i = 0; p_i < num_particles; p_i++) {
-        c = new Array(3)
         c = get_cell(positions[p_i])
-        if(!is_in_grid(c)) {
-            console.log(c + "; " + p_i)
-            
-            console.log(confine_position_to_boundary(positions[p_i]))
-        }
-
         offs = grid_num_particles[c[0]][c[1]][c[2]]
-        if(offs >= max_num_particles_per_cell - 1) continue;
+        if (offs >= max_num_particles_per_cell - 1) continue;
         grid_num_particles[c[0]][c[1]][c[2]] += 1;
         grid2particles[c[0]][c[1]][c[2]][offs] = p_i;
     }
 
-
     for (var p_i = 0; p_i < num_particles; p_i++) {
-        pos_i = new Array(3)
+        pos_i = [0, 0, 0]
         pos_i[0] = positions[p_i][0]
         pos_i[1] = positions[p_i][1]
         pos_i[2] = positions[p_i][2]
@@ -266,68 +302,214 @@ function prologue() {
     }
     // find particle neighbors
 }
+const settings0 = {
+    output: { x: num_particles },
+    constants: {
+        poly6_factor: 315.0 / 64.0 / pi,
+        spiky_grad_factor: -45.0 / pi,
+        h: 1.1,
+        mass: 1.0,
+        rho0: 1.0,
+        lambda_epsilon: 100.0,
+        corr_deltaQ_coeff: 0.3,
+        corrK: 0.001,
+    },
+};
 
-function substep() {
-    for (var p_i = 0; p_i < num_particles; p_i++) {
-        pos_i = positions[p_i]
-        grad_i = [0.0, 0.0, 0.0]
-        sum_gradient_sqr = 0.0
-        density_constraint = 0.0
-        for (var j = 0; j < particle_num_neighbors[p_i]; j++) {
-            p_j = particle_neighbors[p_i][j]
-            pos_ji = [pos_i[0] - positions[p_j][0], pos_i[1] - positions[p_j][1], pos_i[2] - positions[p_j][2]]
-            grad_j = spiky_gradient(pos_ji, h)
-            grad_i[0] += grad_j[0]
-            grad_i[1] += grad_j[1]
-            grad_i[2] += grad_j[2]
-            sum_gradient_sqr += Math.pow(grad_j.norm(), 2)
-            // Eq(2)
-            density_constraint += poly6_value(pos_ji.norm(), h)
-        }
-
-        // Eq(1)
-        density_constraint = (mass * density_constraint / rho0) - 1.0
-
-        sum_gradient_sqr += Math.pow(grad_i.norm(), 2)
-        lambdas[p_i] = (-density_constraint) / (sum_gradient_sqr +
-            lambda_epsilon)
+const kernelApplyDelta = gpu.createKernel(
+    function (positions, position_deltas) {
+        return [positions[this.thread.x][0] + position_deltas[this.thread.x][0],
+        positions[this.thread.x][1] + position_deltas[this.thread.x][1],
+        positions[this.thread.x][2] + position_deltas[this.thread.x][2]]
     }
-    // compute position deltas
-    // Eq(12), (14)
-    for (var p_i = 0; p_i < num_particles; p_i++) {
-        pos_i = positions[p_i]
-        lambda_i = lambdas[p_i]
+).setOutput([num_particles])
 
-        pos_delta_i = [0.0, 0.0, 0.0]
-        for (var j = 0; j < particle_num_neighbors[p_i]; j++) {
-            p_j = particle_neighbors[p_i][j]
+const settings1 = {
+    output: { x: num_particles },
+    constants: {
+        poly6_factor: 315.0 / 64.0 / pi,
+        spiky_grad_factor: -45.0 / pi,
+        h: 1.1,
+        mass: 1.0,
+        rho0: 1.0,
+        lambda_epsilon: 100.0,
+        corr_deltaQ_coeff: 0.3,
+        corrK: 0.001,
+    },
+};
+0
+const kernelComputePosDelta = gpu.createKernel(
+    function (positions, lambdas, particle_num_neighbors, particle_neighbors) {
+        function poly6_value(s) {
+            var h = this.constants.h
+            var result = 0.0
+            if (0 < s && s < h) {
+                var x = (h * h - s * s) / (h * h * h)
+                result = this.constants.poly6_factor * x * x * x
+            }
+            return result
+        }
+        function spiky_gradient(r) {
+            var result = [0.0, 0.0, 0.0]
+            var r_len = Math.sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2])
+            if (0 < r_len && r_len < this.constants.h) {
+                var x = (this.constants.h - r_len) / (this.constants.h * this.constants.h * this.constants.h)
+                var g_factor = this.constants.spiky_grad_factor * x * x
+                result[0] = r[0] * g_factor / r_len
+                result[1] = r[1] * g_factor / r_len
+                result[2] = r[2] * g_factor / r_len
+            }
+            return result
+        }
+        function compute_scorr(pos_ji) {
+            // Eq (13)
+            var n = Math.sqrt(pos_ji[0] * pos_ji[0] + pos_ji[1] * pos_ji[1] + pos_ji[2] * pos_ji[2])
+            var x = poly6_value(n) / poly6_value(this.constants.corr_deltaQ_coeff * this.constants.h)
+            // pow(x, 4)
+            return (-this.constants.corrK) * Math.pow(x, 4)
+        }
+        var pos_i = positions[this.thread.x]
+        var lambda_i = lambdas[this.thread.x]
+
+        var pos_delta_i = [0.0, 0.0, 0.0]
+        for (var j = 0; j < particle_num_neighbors[this.thread.x]; j++) {
+            var p_j = particle_neighbors[this.thread.x][j]
             if (p_j < 0)
                 break;
-            lambda_j = lambdas[p_j]
-            pos_ji = new Array(3)
-            pos_ji[0] = pos_i[0] - positions[p_j][0]
-            pos_ji[1] = pos_i[1] - positions[p_j][1]
-            pos_ji[2] = pos_i[2] - positions[p_j][2]
-            scorr_ij = compute_scorr(pos_ji)
-            grad = spiky_gradient(pos_ji, h);
+            var lambda_j = lambdas[p_j]
+            var pos_ji = [0, 0, 0]
+            pos_ji[0] = positions[this.thread.x][0] - positions[p_j][0]
+            pos_ji[1] = positions[this.thread.x][1] - positions[p_j][1]
+            pos_ji[2] = positions[this.thread.x][2] - positions[p_j][2]
+            var scorr_ij = compute_scorr(pos_ji)
+            var grad = spiky_gradient(pos_ji);
             pos_delta_i[0] += (lambda_i + lambda_j + scorr_ij) * grad[0]
             pos_delta_i[1] += (lambda_i + lambda_j + scorr_ij) * grad[1]
             pos_delta_i[2] += (lambda_i + lambda_j + scorr_ij) * grad[2]
         }
 
-        pos_delta_i[0] /= rho0
-        pos_delta_i[1] /= rho0
-        pos_delta_i[2] /= rho0
-        position_deltas[p_i][0] = pos_delta_i[0]
-        position_deltas[p_i][1] = pos_delta_i[1]
-        position_deltas[p_i][2] = pos_delta_i[2]
-    }
+        pos_delta_i[0] /= this.constants.rho0
+        pos_delta_i[1] /= this.constants.rho0
+        pos_delta_i[2] /= this.constants.rho0
+
+        var ret = [pos_delta_i[0], pos_delta_i[1], pos_delta_i[2]]
+        return ret;
+    }, settings1).setPipeline(true)
+
+const kernelComputeLambda = gpu.createKernel(
+    function (positions, particle_neighbors, particle_num_neighbors) {
+        function poly6_value(s) {
+            if (0 < s && s < this.constants.h) {
+                var x = (this.constants.h * this.constants.h - s * s) / Math.pow(this.constants.h, 3)
+                return this.constants.poly6_factor * x * x * x
+            }
+            return 0
+        }
+        function spiky_gradient(r) {
+            var r_len = Math.sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2])
+            if (0 < r_len && r_len < this.constants.h) {
+                var x = (this.constants.h - r_len) / (this.constants.h * this.constants.h * this.constants.h)
+                var g_factor = this.constants.spiky_grad_factor * x * x
+                return [r[0] * g_factor / r_len, r[1] * g_factor / r_len, r[2] * g_factor / r_len]
+            }
+            return [0, 0, 0]
+        }
+        var grad_i = [0.0, 0.0, 0.0]
+        var sum_gradient_sqr = 0.0
+        var density_constraint = 0.0
+        for (var j = 0; j < particle_num_neighbors[this.thread.x]; j++) {
+            var p_j = particle_neighbors[this.thread.x][j]
+            var r = [positions[this.thread.x][0] - positions[p_j][0], positions[this.thread.x][1] - positions[p_j][1], positions[this.thread.x][2] - positions[p_j][2]]
+            var grad_j = spiky_gradient(r)
+            grad_i[0] += grad_j[0]
+            grad_i[1] += grad_j[1]
+            grad_i[2] += grad_j[2]
+            sum_gradient_sqr += grad_j[0] * grad_j[0] + grad_j[1] * grad_j[1] + grad_j[2] * grad_j[2];
+            density_constraint += poly6_value(Math.sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]))
+        }
+
+        density_constraint = (this.constants.mass * density_constraint / this.constants.rho0) - 1.0
+
+        sum_gradient_sqr += grad_i[0] * grad_i[0] + grad_i[1] * grad_i[1] + grad_i[2] * grad_i[2];
+        return (-density_constraint) / (sum_gradient_sqr + this.constants.lambda_epsilon)
+    }, settings0).setPipeline(true)
+
+
+function substep() {
+    lambdas = kernelComputeLambda(positions, particle_neighbors, particle_num_neighbors);
+    // var sum_gradient_sqr = []
+    // var density_constraint = []
+    // var grad_i = []
+    // for (var p_i = 0; p_i < num_particles; p_i++) {
+    //     pos_i = positions[p_i]
+    //     grad_i.push([])
+    //     grad_i[p_i].push(0)
+    //     grad_i[p_i].push(0)
+    //     grad_i[p_i].push(0)
+    //     sum_gradient_sqr.push(0)
+    //     density_constraint.push(0)
+    //     for (var j = 0; j < particle_num_neighbors[p_i]; j++) {
+    //         p_j = particle_neighbors[p_i][j]
+    //         pos_ji = [pos_i[0] - positions[p_j][0], pos_i[1] - positions[p_j][1], pos_i[2] - positions[p_j][2]]
+    //         grad_j = spiky_gradient(pos_ji, h)
+    //         grad_i[p_i][0] += grad_j[0]
+    //         grad_i[p_i][1] += grad_j[1]
+    //         grad_i[p_i][2] += grad_j[2]
+    //         sum_gradient_sqr[p_i] += Math.pow(grad_j.norm(), 2)
+    //         // Eq(2)
+    //         density_constraint[p_i] += poly6_value(pos_ji.norm(), h)
+    //     }
+
+    //     // Eq(1)
+    //     // density_constraint[p_i] = (mass * density_constraint[p_i] / rho0) - 1.0
+
+    //     // sum_gradient_sqr += Math.pow(grad_i.norm(), 2)
+    //     // lambdas[p_i] = (-density_constraint) / (sum_gradient_sqr +
+    //     //     lambda_epsilon)
+    // }
+
+    // lambdas = KernelLambda(sum_gradient_sqr, density_constraint, grad_i);
+    // compute position deltas
+    // Eq(12), (14)
+
+    position_deltas = kernelComputePosDelta(positions, lambdas, particle_num_neighbors, particle_neighbors)
+
+
+    // for (var p_i = 0; p_i < num_particles; p_i++) {
+    //     pos_i = positions[p_i]
+    //     lambda_i = lambdas[p_i]
+
+    //     pos_delta_i = [0.0, 0.0, 0.0]
+    //     for (var j = 0; j < particle_num_neighbors[p_i]; j++) {
+    //         p_j = particle_neighbors[p_i][j]
+    //         if (p_j < 0)
+    //             break;
+    //         lambda_j = lambdas[p_j]
+    //         pos_ji = [0, 0, 0]
+    //         pos_ji[0] = pos_i[0] - positions[p_j][0]
+    //         pos_ji[1] = pos_i[1] - positions[p_j][1]
+    //         pos_ji[2] = pos_i[2] - positions[p_j][2]
+    //         scorr_ij = compute_scorr(pos_ji)
+    //         grad = spiky_gradient(pos_ji, h);
+    //         pos_delta_i[0] += (lambda_i + lambda_j + scorr_ij) * grad[0]
+    //         pos_delta_i[1] += (lambda_i + lambda_j + scorr_ij) * grad[1]
+    //         pos_delta_i[2] += (lambda_i + lambda_j + scorr_ij) * grad[2]
+    //     }
+
+    //     pos_delta_i[0] /= rho0
+    //     pos_delta_i[1] /= rho0
+    //     pos_delta_i[2] /= rho0
+    //     position_deltas[p_i][0] = pos_delta_i[0]
+    //     position_deltas[p_i][1] = pos_delta_i[1]
+    //     position_deltas[p_i][2] = pos_delta_i[2]
+    // }
     // apply position deltas
-    for (var i = 0; i < num_particles; i++){
-        positions[i][0] += position_deltas[i][0]
-        positions[i][1] += position_deltas[i][1]
-        positions[i][2] += position_deltas[i][2]
-    }
+    positions = kernelApplyDelta(positions, position_deltas.toArray())
+    // for (var i = 0; i < num_particles; i++) {
+    //     positions[i][0] += position_deltas[i][0]
+    //     positions[i][1] += position_deltas[i][1]
+    //     positions[i][2] += position_deltas[i][2]
+    // }
 }
 
 function epilogue() {
@@ -345,22 +527,34 @@ function epilogue() {
         velocities[i][2] = (positions[i][2] - old_positions[i][2]) / time_delta
     }
     // no vorticity/xsph because we cannot do cross product in 2D...
+
 }
 
 
 function run_pbf() {
+    var d = new Date();
+    var n = d.getTime();
     prologue()
+    var d = new Date();
+    console.log("Prologue: " + (d.getTime() - n))
+    n = d.getTime();
     for (var i = 0; i < pbf_num_iters; i++) {
         substep()
     }
+    var d = new Date();
+    console.log("Substep: " + (d.getTime() - n))
+    n = d.getTime();
     epilogue()
+    var d = new Date();
+    console.log("Epilogue: " + (d.getTime() - n))
+    n = d.getTime();
 }
 
 
 function init_particles() {
     for (var i = 0; i < num_particles; i++) {
         delta = h * 0.8
-        offs = [(boundary[0] - delta * num_particles_x) * 0.5, boundary[1] * 0.1, boundary[2] * 0.5]
+        offs = [(boundary[0] - delta * num_particles_x), 0, 0]
         var x = Math.floor(i / num_particles_y) % num_particles_x;
         var y = (i % num_particles_y);
         var z = Math.floor(Math.floor(i / num_particles_x) / num_particles_y)
@@ -406,12 +600,11 @@ function main() {
     frame = 0;
     while (true) {
         frame++;
-        //move_board()
         run_pbf()
         if (frame % 20 == 1)
             print_stats()
-        if(frame > 1000)
-        break;
+        if (frame > 1000)
+            break;
     }
 }
 

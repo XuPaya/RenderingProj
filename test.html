@@ -1,5 +1,8 @@
+<meta charset="utf-8">
+
 <body>
     <script src="three.js"></script>
+    <script src="gpu-browser.min.js"></script>
     <script language="JavaScript" src="timestep.js">
     </script>
     <script id="fragment-shader" type="x-shader/x-fragment">
@@ -14,7 +17,7 @@
     </script>
     <script>
         var scene = new THREE.Scene();
-        var camera = new THREE.OrthographicCamera(-10, 10, -10, 10, -10, 10);
+        var camera = new THREE.OrthographicCamera(-5, 5, -10, 10, -5, 5);
         camera.lookAt(0.1, 0.05, 0.1)
 
         createVariables()
@@ -28,9 +31,9 @@
             fragmentShader: document.getElementById('fragment-shader').textContent
         });
         var particles = new Array(num_particles)
-        for(var i = 0; i < num_particles; i++) {
-            var sphereGeo = new THREE.SphereGeometry( particle_radius_in_world / 10, 8, 8 );
-            var sphere = new THREE.Mesh( sphereGeo, material3 );
+        for (var i = 0; i < num_particles; i++) {
+            var sphereGeo = new THREE.SphereGeometry(particle_radius_in_world / 10, 8, 8);
+            var sphere = new THREE.Mesh(sphereGeo, material3);
             sphere.position.set(positions[i][0] / 10 - 5, (100 - positions[i][1]) / 10 - 5, positions[i][2] / 10 - 5)
             particles[i] = sphere
             scene.add(sphere);
@@ -41,13 +44,17 @@
             renderer.render(scene, camera);
         };
         function UpdatePositions() {
-            for(var i = 0; i < num_particles; i++) {
+            for (var i = 0; i < num_particles; i++) {
                 particles[i].position.set(positions[i][0] / 10 - 5, (100 - positions[i][1]) / 10 - 5, positions[i][2] / 10 - 5);
             }
         }
+        var frame = 0;
         function animate() {
             requestAnimationFrame(animate)
             run_pbf()
+            frame++;
+            if (frame % 20 == 1)
+                print_stats()
             UpdatePositions()
             render()
         }
